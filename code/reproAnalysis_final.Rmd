@@ -1,0 +1,611 @@
+---
+title: "Analysis Final"
+author: "Michael Lombardo"
+date: "30/4/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Prepare dataset
+
+```{r, warning=FALSE, message=FALSE}
+library(easypackages)
+libraries("here","tidyverse","foreign","lmerTest","psych",
+          "ggeasy","emmeans","patchwork","reshape2")
+
+codepath = here("code")
+source(file.path(codepath,"utils.R"))
+datapath = here("data")
+plotpath = here("plots")
+resultpath = here("results")
+
+fontSize = 24
+cols2use = c("#619cff","#ffa500")
+
+data_fname = file.path(datapath, "MIRA dataset 10-21-23.sav")
+tidy_data = prep_dataset(data_fname)
+```
+
+# Contingency tables describing data
+
+```{r, warning=FALSE, message=FALSE}
+#  Sex x Treatment Type
+table(tidy_data$sex,tidy_data$tx)
+
+# Responder Status
+table(tidy_data$responder15)
+table(tidy_data$responder24)
+
+# Responder Status x Treatment Type
+table(tidy_data$responder15,tidy_data$tx)
+table(tidy_data$responder24,tidy_data$tx)
+
+# Responder Status x Sex
+table(tidy_data$responder15,tidy_data$sex)
+table(tidy_data$responder24,tidy_data$sex)
+
+# Responder Status x Treatment ESDM vs Other
+table(tidy_data$responder15,tidy_data$tx_mvl)
+table(tidy_data$responder24,tidy_data$tx_mvl)
+
+# Responder Status x Treatment Type (Broad)
+table(tidy_data$responder15,tidy_data$tx_broad)
+table(tidy_data$responder24,tidy_data$tx_broad)
+```
+
+# Preprocess data before modeling
+
+The continuous predictors in the model should be scaled (e.g., z-scored) first.
+
+```{r, warning=FALSE, message=FALSE}
+categorical_predictors = c("tx_broad","sex")
+
+# scale predictors as a pre-processing step for the continuous variables that will be modeled
+continuous_predictors = c("age_at_start",
+                          "tx_duration",
+                          "intensity",
+                          "pre_imitation",
+                          "pre_vabs_abc",
+                          "pre_ados_css",
+                          # "pretx_dq",
+                          "pretx_verbal_dq",
+                          "pretx_nonverbal_dq")
+
+pcavars = c("age_at_start","tx_duration","intensity",
+            "pre_imitation",
+            "pre_vabs_abc",
+            "pre_ados_css",
+            "pretx_verbal_dq",
+            "pretx_nonverbal_dq")
+```
+
+# Acquisition of phrase speech
+
+IVs: sex + tx_broad + age_at_start + intensity + pre_imitation + pre_vabs_abc + pre_ados_css + pretx_verbal_dq + pretx_nonverbal_dq
+
+RFX: (1 | dataset)
+
+```{r, warning=FALSE, message=FALSE}
+responder_var = "responder24"
+
+# Responder Status x Treatment Type (Broad)
+tmp_tbl = table(tidy_data[,responder_var],tidy_data$tx_broad)
+print(tmp_tbl)
+
+max2use = max(tmp_tbl)
+data2plot = data.frame(t(tmp_tbl))
+# cols2use = get_ggColorHue(4)
+
+tx_label2use = "ESDM"
+p_esdm = ggplot(data = data2plot[data2plot$Var1==tx_label2use,], aes(x=Var2,y=Freq)) + 
+  geom_bar(stat="identity",aes(fill = Var2)) + 
+  xlab("Responder Type") + 
+  ylab("Sample Size") + ylim(0,max2use) + 
+  scale_fill_manual(values=cols2use) + 
+  scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+  theme_bw() + 
+  guides(fill="none") +
+  ggtitle(tx_label2use) + 
+  easy_center_title() +  
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+    strip.text.y = element_text(size=fontSize),
+    axis.text.x = element_text(size=fontSize),
+    axis.text.y = element_text(size=fontSize-2),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size=fontSize),
+    strip.text = element_text(size = fontSize))
+
+tx_label2use = "EIBI"
+p_eibi = ggplot(data = data2plot[data2plot$Var1==tx_label2use,], aes(x=Var2,y=Freq)) + 
+  geom_bar(stat="identity",aes(fill = Var2)) + 
+  xlab("Responder Type") + 
+  ylab("Sample Size") + ylim(0,max2use) + 
+  scale_fill_manual(values=cols2use) + 
+  scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+  theme_bw() + 
+  guides(fill="none") +
+  ggtitle(tx_label2use) + 
+  easy_center_title() +  
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+    strip.text.y = element_text(size=fontSize),
+    axis.text.x = element_text(size=fontSize),
+    axis.text.y = element_text(size=fontSize-2),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size=fontSize),
+    strip.text = element_text(size = fontSize))
+
+tx_label2use = "NDBI"
+p_ndbi = ggplot(data = data2plot[data2plot$Var1==tx_label2use,], aes(x=Var2,y=Freq)) + 
+  geom_bar(stat="identity",aes(fill = Var2)) + 
+  xlab("Responder Type") + 
+  ylab("Sample Size") + ylim(0,max2use) + 
+  scale_fill_manual(values=cols2use) + 
+  scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+  theme_bw() + 
+  guides(fill="none") +
+  ggtitle(tx_label2use) + 
+  easy_center_title() +  
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+    strip.text.y = element_text(size=fontSize),
+    axis.text.x = element_text(size=fontSize),
+    axis.text.y = element_text(size=fontSize-2),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size=fontSize),
+    strip.text = element_text(size = fontSize))
+
+tx_label2use = "Other"
+p_other = ggplot(data = data2plot[data2plot$Var1==tx_label2use,], aes(x=Var2,y=Freq)) + 
+  geom_bar(stat="identity",aes(fill = Var2)) + 
+  xlab("Responder Type") + 
+  ylab("Sample Size") + ylim(0,max2use) + 
+  scale_fill_manual(values=cols2use) + 
+  scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+  theme_bw() + 
+  guides(fill="none") +
+  ggtitle("Classroom-Based") + 
+  easy_center_title() +  
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+    strip.text.y = element_text(size=fontSize),
+    axis.text.x = element_text(size=fontSize),
+    axis.text.y = element_text(size=fontSize-2),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size=fontSize),
+    strip.text = element_text(size = fontSize))
+
+p_final = p_esdm + p_ndbi + p_eibi + p_other + plot_layout(nrow=2,ncol=2)
+ggsave(filename = file.path(plotpath, "tx_sample_size_24mo.pdf"), plot = p_final,
+       width = 16, height=10)
+p_final
+
+
+# Correlation matrix after using only subjects with complete responder18 labels
+mask = rowSums(is.na(tidy_data[,c(responder_var,continuous_predictors)]))==0
+data2use = tidy_data %>% filter(mask)
+
+corr_mat = cor(data2use[,continuous_predictors], use="pairwise.complete.obs")
+dist = as.dist((1-corr_mat)/2)
+hc = hclust(dist)
+corr_mat = corr_mat[hc$order, hc$order]
+data2plot = melt(corr_mat)
+# colnames(data2plot)[3] = "r"
+p = ggplot(data = data2plot, aes(x = Var1, y = Var2, fill = value, label = round(value,2))) +
+  geom_tile() +
+  geom_text() + 
+  labs(x = NULL, y = NULL, fill = "r") +
+  scale_fill_gradientn(colours = colorRampPalette(c("blue","white","red"))(100), 
+                       limits = c(-1,1), 
+                       oob = scales::squish) +
+  scale_x_discrete(labels = c("Duration", "VABS ABC","Verbal DQ","Nonverbal DQ", 
+                              "ADOS CSS", "Imitation","Age at Start","Intensity")) +
+  scale_y_discrete(labels = c("Duration", "VABS ABC","Verbal DQ","Nonverbal DQ", 
+                              "ADOS CSS", "Imitation","Age at Start","Intensity")) + 
+  ggtitle("Predictor Variable Correlations") + 
+  easy_center_title() +  
+  theme_minimal() +
+  theme(axis.text.x = element_text(hjust = 0.95),
+        axis.text.y = element_text(hjust = 0.95),
+        plot.title = element_text(hjust = 0.5),
+        legend.title.align=0.22)
+
+p = p + easy_rotate_x_labels(angle = 90) +
+  theme(axis.text.y = element_text(hjust = 0.95), 
+        axis.text.x = element_text(hjust = 0.95),
+        legend.title.align=0.22)
+ggsave(filename = file.path(plotpath, "24mo_corrmat.pdf"), plot = p)
+p
+        
+
+# run again with PCA on continuous predictors
+form2use = as.formula(sprintf("%s ~ sex + tx_broad + PC1 + PC2 + PC3 + PC4 + PC5 + (1 | dataset)",responder_var))
+
+# fit model
+result = logistic_regression(data = tidy_data, 
+                             formula = form2use, 
+                             vars2scale = continuous_predictors, 
+                             responder_var = responder_var,
+                             do_pca = TRUE,
+                             pcavars = pcavars,
+                             recon_pcs = c("PC1","PC2"))
+# pairwise comparisons of tx_broad
+pairwise_res = emmeans(result$model, pairwise ~ tx_broad)
+pairwise_res
+
+summary(result$pca_res)
+
+data2plot = result$pca_res$rotation[hc$order,]
+data2plot = melt(data2plot)
+p = ggplot(data = data2plot, aes(x = Var2, y = Var1, fill = value, label = round(value,2))) +
+  geom_tile() +
+  geom_text() + 
+  labs(x = NULL, y = NULL, fill = "Loading") +
+  scale_fill_gradientn(colours = colorRampPalette(c("blue","white","red"))(100), 
+                       limits = c(-0.5,0.5), 
+                       oob = scales::squish) +
+  scale_x_discrete(labels = colnames(result$pca_res$rotation)) +
+  scale_y_discrete(labels = rev(c("Intensity","Age at Start","Imitation","ADOS CSS", 
+                              "Nonverbal DQ","Verbal DQ","VABS ABC","Duration"))) + 
+  ggtitle("PCA Loadings") + 
+  easy_center_title() +  
+  theme_minimal() +
+  theme(axis.text.y = element_text(hjust = 0.95),
+        plot.title = element_text(hjust = 0.5))
+ggsave(filename = file.path(plotpath, "24mo_pcaloadings.pdf"), plot = p)
+p
+
+# plot screeplot
+pca_res = prcomp(data2use[,pcavars], scale=TRUE)
+data2plot = data.frame(comps = colnames(pca_res$rotation),
+           percent_var = ((pca_res$sdev^2) / sum(pca_res$sdev^2)) * 100)
+p = ggplot(data = data2plot, aes(x = comps, y = percent_var)) + 
+  geom_point() + 
+  geom_line(aes(group=1)) + 
+  xlab("Components") + ylab("Percentage Variance Explained") + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize),
+      strip.text.y = element_text(size=fontSize),
+      axis.text.x = element_text(size=fontSize),
+      axis.text.y = element_text(size=fontSize-2),
+      axis.title.x = element_blank(),
+      axis.title.y = element_text(size=fontSize),
+      strip.text = element_text(size = fontSize))
+ggsave(filename = file.path(plotpath,"24mo_screeplot.pdf"), plot = p)
+p
+
+# Plot the PCs by responder status
+data2plot = result$data
+vars2plot = c("PC1","PC2")
+for (var2plot in vars2plot){
+  p = ggplot(data = data2plot, aes(x = .data[[responder_var]], 
+                                    y = .data[[var2plot]], 
+                                    colour = .data[[responder_var]])) + 
+    geom_scatterbox() + ggtitle(var2plot) + easy_center_title()
+  print(p)
+  
+  d_res = cohens_d(x = data2plot[data2plot[,responder_var]=="Responder", var2plot], 
+           y = data2plot[data2plot[,responder_var]=="Non-Responder", var2plot])
+  print(sprintf("Effect size for %s is d = %f", var2plot, d_res))
+}
+
+
+# plot recon data retaining PC1 and PC2
+tmp_res = logistic_regression(data = tidy_data, 
+                             formula = form2use, 
+                             vars2scale = continuous_predictors, 
+                             responder_var = responder_var,
+                             do_pca = TRUE,
+                             pcavars = pcavars,
+                             recon_pcs = c("PC1","PC2"),
+                             print_output = FALSE)
+data2plot = tmp_res$pca_recon_data
+
+vars2plot = c("age_at_start","tx_duration","intensity",
+              "pre_imitation","pre_vabs_abc","pre_ados_css",
+              "pretx_verbal_dq","pretx_nonverbal_dq")
+varnames2use = c("Age at Start","Treatment Duration","Treatment Intensity",
+              "Imitation","VABS ABC","ADOS CSS",
+              "Verbal DQ","Nonverbal DQ")
+i = 0
+plots2save = list()
+for (var2plot in vars2plot){
+  i = i+1
+  p = ggplot(data = data2plot, aes(x = .data[[responder_var]], 
+                                    y = .data[[var2plot]], 
+                                    colour = .data[[responder_var]])) + 
+    # geom_scatterbox() + 
+    geom_jitter(size=10) +
+    geom_boxplot(fill = NA, colour = "#000000", outlier.shape = NA) +
+    ylab(varnames2use[i]) + 
+    scale_colour_manual(values=cols2use) + 
+    scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+    guides(colour="none") +
+    ggtitle(varnames2use[i]) + easy_center_title() + 
+    easy_remove_x_axis(what = "title") + 
+    theme_bw() + 
+    theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+      strip.text.y = element_text(size=fontSize),
+      axis.text.x = element_text(size=fontSize),
+      axis.text.y = element_text(size=fontSize-2),
+      axis.title.x = element_blank(),
+      axis.title.y = element_text(size=fontSize),
+      strip.text = element_text(size = fontSize))
+  ggsave(filename = file.path(plotpath,sprintf("%s_24mo_reconplot.pdf",var2plot)), plot = p)
+  plots2save[[i]] = p
+  print(p)
+  
+  d_res = cohens_d(x = data2plot[data2plot[,responder_var]=="Responder", var2plot], 
+         y = data2plot[data2plot[,responder_var]=="Non-Responder", var2plot])
+  print(sprintf("Effect size for %s is d = %f", var2plot, d_res))
+}
+
+p_final = plots2save[[1]] + plots2save[[3]] + plots2save[[6]] + plots2save[[4]] + plots2save[[5]] + plots2save[[8]] + plots2save[[7]] + plots2save[[2]] + plot_layout(nrow = 2, ncol = 4)
+ggsave(filename = file.path(plotpath,"24mo_reconplot.pdf"), plot = p_final, 
+       width = 24, height=15)
+p_final
+```
+
+# Acquisition of single words
+
+IVs: sex + tx_broad + age_at_start + intensity + pre_imitation + pre_vabs_abc + pre_ados_css + pretx_verbal_dq + pretx_nonverbal_dq
+
+RFX: (1 | dataset)
+
+```{r, warning=FALSE, message=FALSE}
+responder_var = "responder15"
+
+# Responder Status x Treatment Type (Broad)
+tmp_tbl = table(tidy_data[,responder_var],tidy_data$tx_broad)
+print(tmp_tbl)
+
+max2use = max(tmp_tbl)
+data2plot = data.frame(t(tmp_tbl))
+# cols2use = get_ggColorHue(4)
+
+tx_label2use = "ESDM"
+p_esdm = ggplot(data = data2plot[data2plot$Var1==tx_label2use,], aes(x=Var2,y=Freq)) + 
+  geom_bar(stat="identity",aes(fill = Var2)) + 
+  xlab("Responder Type") + 
+  ylab("Sample Size") + ylim(0,max2use) + 
+  scale_fill_manual(values=cols2use) + 
+  scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+  theme_bw() + 
+  guides(fill="none") +
+  ggtitle(tx_label2use) + 
+  easy_center_title() +  
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+    strip.text.y = element_text(size=fontSize),
+    axis.text.x = element_text(size=fontSize),
+    axis.text.y = element_text(size=fontSize-2),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size=fontSize),
+    strip.text = element_text(size = fontSize))
+
+tx_label2use = "EIBI"
+p_eibi = ggplot(data = data2plot[data2plot$Var1==tx_label2use,], aes(x=Var2,y=Freq)) + 
+  geom_bar(stat="identity",aes(fill = Var2)) + 
+  xlab("Responder Type") + 
+  ylab("Sample Size") + ylim(0,max2use) + 
+  scale_fill_manual(values=cols2use) + 
+  scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+  theme_bw() + 
+  guides(fill="none") +
+  ggtitle(tx_label2use) + 
+  easy_center_title() +  
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+    strip.text.y = element_text(size=fontSize),
+    axis.text.x = element_text(size=fontSize),
+    axis.text.y = element_text(size=fontSize-2),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size=fontSize),
+    strip.text = element_text(size = fontSize))
+
+tx_label2use = "NDBI"
+p_ndbi = ggplot(data = data2plot[data2plot$Var1==tx_label2use,], aes(x=Var2,y=Freq)) + 
+  geom_bar(stat="identity",aes(fill = Var2)) + 
+  xlab("Responder Type") + 
+  ylab("Sample Size") + ylim(0,max2use) + 
+  scale_fill_manual(values=cols2use) + 
+  scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+  theme_bw() + 
+  guides(fill="none") +
+  ggtitle(tx_label2use) + 
+  easy_center_title() +  
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+    strip.text.y = element_text(size=fontSize),
+    axis.text.x = element_text(size=fontSize),
+    axis.text.y = element_text(size=fontSize-2),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size=fontSize),
+    strip.text = element_text(size = fontSize))
+
+tx_label2use = "Other"
+p_other = ggplot(data = data2plot[data2plot$Var1==tx_label2use,], aes(x=Var2,y=Freq)) + 
+  geom_bar(stat="identity",aes(fill = Var2)) + 
+  xlab("Responder Type") + 
+  ylab("Sample Size") + ylim(0,max2use) + 
+  scale_fill_manual(values=cols2use) + 
+  scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+  theme_bw() + 
+  guides(fill="none") +
+  ggtitle("Classroom-Based") + 
+  easy_center_title() +  
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+    strip.text.y = element_text(size=fontSize),
+    axis.text.x = element_text(size=fontSize),
+    axis.text.y = element_text(size=fontSize-2),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size=fontSize),
+    strip.text = element_text(size = fontSize))
+
+p_final = p_esdm + p_ndbi + p_eibi + p_other + plot_layout(nrow=2,ncol=2)
+ggsave(filename = file.path(plotpath, "tx_sample_size_15mo.pdf"), plot = p_final,
+       width = 16, height = 10)
+p_final
+
+
+# Correlation matrix after using only subjects with complete responder18 labels
+mask = rowSums(is.na(tidy_data[,c(responder_var,continuous_predictors)]))==0
+data2use = tidy_data %>% filter(mask)
+
+corr_mat = cor(data2use[,continuous_predictors], use="pairwise.complete.obs")
+dist = as.dist((1-corr_mat)/2)
+hc = hclust(dist)
+corr_mat = corr_mat[hc$order, hc$order]
+data2plot = melt(corr_mat)
+# colnames(data2plot)[3] = "r"
+p = ggplot(data = data2plot, aes(x = Var1, y = Var2, fill = value, label = round(value,2))) +
+  geom_tile() +
+  geom_text() + 
+  labs(x = NULL, y = NULL, fill = "r") +
+  scale_fill_gradientn(colours = colorRampPalette(c("blue","white","red"))(100), 
+                       limits = c(-1,1), 
+                       oob = scales::squish) +
+  scale_x_discrete(labels = c("Imitation", "Duration","VABS ABC","Verbal DQ", 
+                              "Nonverbal DQ", "ADOS CSS","Age at Start","Intensity")) +
+  scale_y_discrete(labels = c("Imitation", "Duration","VABS ABC","Verbal DQ", 
+                              "Nonverbal DQ", "ADOS CSS","Age at Start","Intensity")) +
+  ggtitle("Predictor Variable Correlations") + 
+  easy_center_title() +  
+  theme_minimal() +
+  theme(axis.text.x = element_text(hjust = 0.95),
+        axis.text.y = element_text(hjust = 0.95), 
+        plot.title = element_text(hjust = 0.5),
+        legend.title.align=0.22)
+
+p = p + easy_rotate_x_labels(angle = 90) +
+  theme(axis.text.y = element_text(hjust = 0.95), 
+        axis.text.x = element_text(hjust = 0.95),
+        legend.title.align=0.22)
+ggsave(filename = file.path(plotpath, "15mo_corrmat.pdf"), plot = p)
+p
+
+
+# run again with PCA on continuous predictors
+form2use = as.formula(sprintf("%s ~ sex + tx_broad + PC1 + PC2 + PC3 + PC4 + PC5 + (1 | dataset)",responder_var))
+
+# fit model
+result = logistic_regression(data = tidy_data, 
+                             formula = form2use, 
+                             vars2scale = continuous_predictors, 
+                             responder_var = responder_var,
+                             do_pca = TRUE,
+                             pcavars = pcavars,
+                             recon_pcs = c("PC1","PC2"))
+# pairwise comparisons of tx_broad
+pairwise_res = emmeans(result$model, pairwise ~ tx_broad)
+pairwise_res
+
+summary(result$pca_res)
+
+data2plot = result$pca_res$rotation[hc$order,]
+data2plot = melt(data2plot)
+p = ggplot(data = data2plot, aes(x = Var2, y = Var1, fill = value, label = round(value,2))) +
+  geom_tile() +
+  geom_text() + 
+  labs(x = NULL, y = NULL, fill = "Loading") +
+  scale_fill_gradientn(colours = colorRampPalette(c("blue","white","red"))(100), 
+                       limits = c(-0.5,0.5), 
+                       oob = scales::squish) +
+  scale_x_discrete(labels = colnames(result$pca_res$rotation)) +
+  scale_y_discrete(labels = rev(c("Intensity","Age at Start","ADOS CSS","Nonverbal DQ",
+                              "Verbal DQ","VABS ABC","Duration","Imitation"))) + 
+  ggtitle("PCA Loadings") + 
+  easy_center_title() +  
+  theme_minimal() +
+  theme(axis.text.y = element_text(hjust = 0.95),
+        plot.title = element_text(hjust = 0.5))
+ggsave(filename = file.path(plotpath, "15mo_pcaloadings.pdf"), plot = p)
+p
+
+# plot screeplot
+pca_res = prcomp(data2use[,pcavars], scale=TRUE)
+data2plot = data.frame(comps = colnames(pca_res$rotation),
+           percent_var = ((pca_res$sdev^2) / sum(pca_res$sdev^2)) * 100)
+p = ggplot(data = data2plot, aes(x = comps, y = percent_var)) + 
+  geom_point() + 
+  geom_line(aes(group=1)) + 
+  xlab("Components") + ylab("Percentage Variance Explained") + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=fontSize),
+      strip.text.y = element_text(size=fontSize),
+      axis.text.x = element_text(size=fontSize),
+      axis.text.y = element_text(size=fontSize-2),
+      axis.title.x = element_blank(),
+      axis.title.y = element_text(size=fontSize),
+      strip.text = element_text(size = fontSize))
+ggsave(filename = file.path(plotpath,"15mo_screeplot.pdf"), plot = p)
+p
+
+# Plot the PCs by responder status
+data2plot = result$data
+vars2plot = c("PC2","PC4")
+for (var2plot in vars2plot){
+  p = ggplot(data = data2plot, aes(x = .data[[responder_var]], 
+                                    y = .data[[var2plot]], 
+                                    colour = .data[[responder_var]])) + 
+    geom_scatterbox() + ggtitle(var2plot) + easy_center_title()
+  print(p)
+  
+  d_res = cohens_d(x = data2plot[data2plot[,responder_var]=="Responder", var2plot], 
+           y = data2plot[data2plot[,responder_var]=="Non-Responder", var2plot])
+  print(sprintf("Effect size for %s is d = %f", var2plot, d_res))
+}
+
+# plot recon data retaining PC2 and PC4
+tmp_res = logistic_regression(data = tidy_data, 
+                             formula = form2use, 
+                             vars2scale = continuous_predictors, 
+                             responder_var = responder_var,
+                             do_pca = TRUE,
+                             pcavars = pcavars,
+                             recon_pcs = c("PC2","PC4"),
+                             print_output = FALSE)
+data2plot = tmp_res$pca_recon_data
+
+
+vars2plot = c("age_at_start","tx_duration","intensity",
+              "pre_imitation","pre_vabs_abc","pre_ados_css",
+              "pretx_verbal_dq","pretx_nonverbal_dq")
+varnames2use = c("Age at Start","Treatment Duration","Treatment Intensity",
+              "Imitation","VABS ABC","ADOS CSS",
+              "Verbal DQ","Nonverbal DQ")
+i = 0
+plots2save = list()
+for (var2plot in vars2plot){
+  i = i+1
+  p = ggplot(data = data2plot, aes(x = .data[[responder_var]], 
+                                    y = .data[[var2plot]], 
+                                    colour = .data[[responder_var]])) + 
+    # geom_scatterbox() + 
+    geom_jitter(size=10) +
+    geom_boxplot(fill = NA, colour = "#000000", outlier.shape = NA) +
+    ylab(varnames2use[i]) + 
+    scale_colour_manual(values=cols2use) + 
+    scale_x_discrete(labels = c("Non-Advancer", "Advancer")) +
+    guides(colour="none") +
+    ggtitle(varnames2use[i]) + easy_center_title() + 
+    easy_remove_x_axis(what = "title") + 
+    theme_bw() + 
+    theme(plot.title = element_text(hjust = 0.5, size=fontSize+8),
+      strip.text.y = element_text(size=fontSize),
+      axis.text.x = element_text(size=fontSize),
+      axis.text.y = element_text(size=fontSize-2),
+      axis.title.x = element_blank(),
+      axis.title.y = element_text(size=fontSize),
+      strip.text = element_text(size = fontSize))
+  ggsave(filename = file.path(plotpath,sprintf("%s_15mo_reconplot.pdf",var2plot)), plot = p)
+  plots2save[[i]] = p
+  print(p)
+  
+  d_res = cohens_d(x = data2plot[data2plot[,responder_var]=="Responder", var2plot], 
+         y = data2plot[data2plot[,responder_var]=="Non-Responder", var2plot])
+  print(sprintf("Effect size for %s is d = %f", var2plot, d_res))
+}
+
+p_final = plots2save[[1]] + plots2save[[3]] + plots2save[[6]] + plots2save[[4]] + plots2save[[5]] + plots2save[[8]] + plots2save[[7]] + plots2save[[2]] + plot_layout(nrow = 2, ncol = 4)
+ggsave(filename = file.path(plotpath,"15mo_reconplot.pdf"), plot = p_final, 
+       width = 24, height=15)
+p_final
+```
